@@ -1,5 +1,9 @@
 package com.example.ui.components
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +39,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.launch
 import com.example.ui.theme.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class CurrencyOption(
     val nameAr: String,
@@ -82,9 +90,13 @@ fun SettingsDialog(
     onResetAllData: () -> Unit = {},
     onExportBackup: (suspend () -> String)? = null,
     onRestoreBackup: ((String, () -> Unit) -> Unit)? = null,
+    onExportBackupToFile: ((Uri, (String) -> Unit, (String) -> Unit) -> Unit)? = null,
+    onRestoreBackupFromFile: ((Uri, () -> Unit, (String) -> Unit) -> Unit)? = null,
+    onShareBackup: (((Uri) -> Unit, (String) -> Unit) -> Unit)? = null,
     onRepairCOGS: (() -> Unit)? = null,
     onApplyMinStockToAll: ((Double) -> Unit)? = null
 ) {
+    val context = LocalContext.current
     var storeName by remember { mutableStateOf(currentStoreName) }
     var storePhone by remember { mutableStateOf(currentStorePhone) }
     var selectedCurrency by remember { mutableStateOf(currentCurrencySymbol) }
@@ -113,8 +125,50 @@ fun SettingsDialog(
     var importErrorMessage by remember { mutableStateOf<String?>(null) }
     var isImporting by remember { mutableStateOf(false) }
 
+    var fileBackupStatusMessage by remember { mutableStateOf<String?>(null) }
+    var fileBackupErrorMessage by remember { mutableStateOf<String?>(null) }
+    var showFileRestoreConfirmDialog by remember { mutableStateOf(false) }
+    var showAdvancedJsonOptions by remember { mutableStateOf(false) }
+
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
+
+    // Launcher for saving/exporting backup file to device storage
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null && onExportBackupToFile != null) {
+            isExporting = true
+            fileBackupStatusMessage = null
+            fileBackupErrorMessage = null
+            onExportBackupToFile(uri, { msg ->
+                isExporting = false
+                fileBackupStatusMessage = msg
+            }, { err ->
+                isExporting = false
+                fileBackupErrorMessage = err
+            })
+        }
+    }
+
+    // Launcher for opening/restoring backup file from device storage
+    val openDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null && onRestoreBackupFromFile != null) {
+            isImporting = true
+            fileBackupStatusMessage = null
+            fileBackupErrorMessage = null
+            onRestoreBackupFromFile(uri, {
+                isImporting = false
+                fileBackupStatusMessage = "تمت استعادة كافة البيانات بنجاح من الملف!"
+                onDismiss()
+            }, { err ->
+                isImporting = false
+                fileBackupErrorMessage = err
+            })
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -614,8 +668,8 @@ fun SettingsDialog(
                         }
                     }
 
-                    // Section 7: Backup & Restore (JSON)
-                    if (onExportBackup != null || onRestoreBackup != null) {
+                    // Section 7: Backup & Restore (حفظ واستعادة النسخة الاحتياطية في ملف بذاكرة الهاتف)
+                    if (onExportBackup != null || onRestoreBackup != null || onExportBackupToFile != null || onRestoreBackupFromFile != null) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
@@ -629,65 +683,177 @@ fun SettingsDialog(
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = Icons.Default.CloudSync,
+                                        imageVector = Icons.Default.SaveAlt,
                                         contentDescription = null,
                                         tint = EmeraldPrimary,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(22.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "النسخ الاحتياطي واستعادة البيانات",
+                                        text = "النسخ الاحتياطي والاستعادة في ملف (ذاكرة الهاتف)",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
 
                                 Text(
-                                    text = "تصدير نسخة كاملة من قاعدة البيانات (الدليل المحاسبي، الأصناف، الفواتير، السندات، القيود، المخزون) لحفظها بأمان، أو استعادتها بأي وقت:",
-                                    style = MaterialTheme.typography.bodySmall
+                                    text = "حفظ نسخة كاملة من البيانات في ملف (JSON) بذاكرة الهاتف لضمان بقائها وعدم فقدانها عند تحديث التطبيق، أو استعادتها بأي وقت بكل سهولة:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
 
+                                // Primary Actions: Save to File in Phone Storage & Restore from File
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    if (onExportBackup != null) {
-                                        Button(
+                                    Button(
+                                        onClick = {
+                                            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.ENGLISH).format(Date())
+                                            val defaultFilename = "smart_accountant_backup_$timeStamp.json"
+                                            createDocumentLauncher.launch(defaultFilename)
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary),
+                                        shape = RoundedCornerShape(10.dp),
+                                        enabled = !isExporting
+                                    ) {
+                                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(if (isExporting) "جاري الحفظ..." else "حفظ نسخة في ملف", style = MaterialTheme.typography.labelSmall)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            showFileRestoreConfirmDialog = true
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        enabled = !isImporting
+                                    ) {
+                                        Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(if (isImporting) "جاري الاستعادة..." else "استعادة من ملف", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+
+                                // Secondary Actions: Share Backup File & Advanced JSON text options
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (onShareBackup != null) {
+                                        FilledTonalButton(
                                             onClick = {
-                                                coroutineScope.launch {
-                                                    isExporting = true
-                                                    try {
-                                                        exportedJsonText = onExportBackup()
-                                                        isCopiedToClipboard = false
-                                                        showExportBackupDialog = true
-                                                    } finally {
-                                                        isExporting = false
+                                                onShareBackup({ shareUri ->
+                                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                                        type = "application/json"
+                                                        putExtra(Intent.EXTRA_STREAM, shareUri)
+                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                                     }
-                                                }
+                                                    context.startActivity(Intent.createChooser(intent, "مشاركة ملف النسخة الاحتياطية"))
+                                                }, { errorMsg ->
+                                                    fileBackupErrorMessage = errorMsg
+                                                })
                                             },
                                             modifier = Modifier.weight(1f),
-                                            enabled = !isExporting,
                                             shape = RoundedCornerShape(10.dp)
                                         ) {
-                                            Icon(Icons.Default.Upload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text(if (isExporting) "جاري التصدير..." else "تصدير نسخة JSON", style = MaterialTheme.typography.labelSmall)
+                                            Text("مشاركة ملف النسخة", style = MaterialTheme.typography.labelSmall)
                                         }
                                     }
 
-                                    if (onRestoreBackup != null) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                importJsonText = ""
-                                                importErrorMessage = null
-                                                showImportBackupDialog = true
-                                            },
-                                            modifier = Modifier.weight(1f),
-                                            shape = RoundedCornerShape(10.dp)
+                                    TextButton(
+                                        onClick = { showAdvancedJsonOptions = !showAdvancedJsonOptions },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            if (showAdvancedJsonOptions) "إخفاء الخيارات النصية ▲" else "خيارات النسخ النصي ▼",
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
+
+                                // Status or Error messages
+                                if (fileBackupStatusMessage != null) {
+                                    Text(
+                                        text = fileBackupStatusMessage!!,
+                                        color = EmeraldPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                if (fileBackupErrorMessage != null) {
+                                    Text(
+                                        text = fileBackupErrorMessage!!,
+                                        color = ErrorRed,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+
+                                // Collapsible Manual JSON text option
+                                AnimatedVisibility(visible = showAdvancedJsonOptions) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(
+                                                MaterialTheme.colorScheme.surface,
+                                                RoundedCornerShape(8.dp)
+                                            )
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "خيارات بديلة: نسخ نص النسخة إلى الحافظة أو لصقه يدوياً",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("استعادة نسخة", style = MaterialTheme.typography.labelSmall)
+                                            if (onExportBackup != null) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        coroutineScope.launch {
+                                                            isExporting = true
+                                                            try {
+                                                                exportedJsonText = onExportBackup()
+                                                                isCopiedToClipboard = false
+                                                                showExportBackupDialog = true
+                                                            } finally {
+                                                                isExporting = false
+                                                            }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                ) {
+                                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("عرض ونسخ النص", style = MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
+
+                                            if (onRestoreBackup != null) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        importJsonText = ""
+                                                        importErrorMessage = null
+                                                        showImportBackupDialog = true
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                ) {
+                                                    Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("لصق نص النسخة", style = MaterialTheme.typography.labelSmall)
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -985,6 +1151,43 @@ fun SettingsDialog(
             },
             dismissButton = {
                 TextButton(onClick = { showImportBackupDialog = false }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+
+    if (showFileRestoreConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showFileRestoreConfirmDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.FolderOpen, contentDescription = null, tint = EmeraldPrimary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("استعادة البيانات من ملف في الهاتف", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Text(
+                    text = "سيتم فتح مدير الملفات لاختيار ملف النسخة الاحتياطية (JSON) واستعادة كافة الحسابات والفواتير والأصناف والقيود والبيانات المسجلة. هل ترغب في المتابعة؟",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showFileRestoreConfirmDialog = false
+                        openDocumentLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary)
+                ) {
+                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("اختيار الملف الآن")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showFileRestoreConfirmDialog = false }) {
                     Text("إلغاء")
                 }
             }

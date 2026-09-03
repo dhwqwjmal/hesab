@@ -2,6 +2,8 @@ package com.example.ui.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
@@ -10,6 +12,9 @@ import com.example.data.repository.AccountingRepository
 import com.example.ui.components.Formatters
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -220,11 +225,6 @@ class AccountingViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             repository.checkAndSeedInitialData()
             repository.repairAndRecalculateCOGS()
-            val isCleaned = prefs.getBoolean("system_data_cleaned_v3", false)
-            if (!isCleaned) {
-                repository.clearInvoicesAndTransactionsOnly()
-                prefs.edit().putBoolean("system_data_cleaned_v3", true).apply()
-            }
         }
     }
 
@@ -359,6 +359,110 @@ class AccountingViewModel(application: Application) : AndroidViewModel(applicati
                 onSuccess()
             }.onFailure { ex ->
                 showMessage(ex.message ?: "فشل استعادة النسخة الاحتياطية")
+            }
+        }
+    }
+
+    fun exportBackupToFile(uri: Uri, onSuccess: (String) -> Unit = {}, onError: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val jsonString = exportBackup()
+                val context = getApplication<Application>()
+                val outputStream: OutputStream? = context.contentResolver.openOutputStream(uri)
+                if (outputStream == null) {
+                    val msg = "تعذر فتح مسار الملف المختار للحفظ"
+                    showMessage(msg)
+                    onError(msg)
+                    return@launch
+                }
+                outputStream.use { out ->
+                    out.write(jsonString.toByteArray(Charsets.UTF_8))
+                    out.flush()
+                }
+                val msg = "تم حفظ ملف النسخة الاحتياطية بنجاح في ذاكرة الهاتف"
+                showMessage(msg)
+                onSuccess(msg)
+            } catch (e: Exception) {
+                val msg = "فشل حفظ النسخة الاحتياطية في الملف: ${e.localizedMessage ?: e.message}"
+                showMessage(msg)
+                onError(msg)
+            }
+        }
+    }
+
+    fun restoreBackupFromFile(uri: Uri, onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val context = getApplication<Application>()
+                val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
+                if (inputStream == null) {
+                    val msg = "تعذر قراءة ملف النسخة الاحتياطية المختار"
+                    showMessage(msg)
+                    onError(msg)
+                    return@launch
+                }
+                val jsonString = inputStream.use { input ->
+                    input.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                }
+                if (jsonString.isBlank()) {
+                    val msg = "ملف النسخة الاحتياطية فارغ"
+                    showMessage(msg)
+                    onError(msg)
+                    return@launch
+                }
+                val result = repository.restoreBackupJson(jsonString) { name, phone, currency, isTax, taxRate, showDec ->
+                    _storeName.value = name
+                    _storePhone.value = phone
+                    _currencySymbol.value = currency
+                    _isTaxEnabled.value = isTax
+                    _defaultTaxRate.value = taxRate
+                    _showDecimals.value = showDec
+                    Formatters.currencySymbol = currency
+                    Formatters.showDecimals = showDec
+                    prefs.edit()
+                        .putString("store_name", name)
+                        .putString("store_phone", phone)
+                        .putString("currency_symbol", currency)
+                        .putBoolean("is_tax_enabled", isTax)
+                        .putFloat("default_tax_rate", taxRate.toFloat())
+                        .putBoolean("show_decimals", showDec)
+                        .apply()
+                }
+                result.onSuccess { msg ->
+                    showMessage(msg)
+                    onSuccess()
+                }.onFailure { ex ->
+                    val errorMsg = ex.message ?: "فشل استعادة النسخة الاحتياطية من الملف"
+                    showMessage(errorMsg)
+                    onError(errorMsg)
+                }
+            } catch (e: Exception) {
+                val msg = "فشل استعادة الملف: ${e.localizedMessage ?: e.message}"
+                showMessage(msg)
+                onError(msg)
+            }
+        }
+    }
+
+    fun shareBackupFile(onReadyToShare: (Uri) -> Unit, onError: (String) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val jsonString = exportBackup()
+                val context = getApplication<Application>()
+                val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ENGLISH).format(Date())
+                val fileName = "smart_accountant_backup_$timeStamp.json"
+                val backupFile = File(context.cacheDir, fileName)
+                backupFile.writeText(jsonString, Charsets.UTF_8)
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    backupFile
+                )
+                onReadyToShare(uri)
+            } catch (e: Exception) {
+                val msg = "فشل تجهيز ملف المشاركة: ${e.localizedMessage ?: e.message}"
+                showMessage(msg)
+                onError(msg)
             }
         }
     }

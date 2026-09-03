@@ -763,6 +763,15 @@ fun MainScreen(viewModel: AccountingViewModel = viewModel()) {
                 onRestoreBackup = { json, onSuccess ->
                     viewModel.restoreBackup(json, onSuccess)
                 },
+                onExportBackupToFile = { uri, onSuccess, onError ->
+                    viewModel.exportBackupToFile(uri, onSuccess, onError)
+                },
+                onRestoreBackupFromFile = { uri, onSuccess, onError ->
+                    viewModel.restoreBackupFromFile(uri, onSuccess, onError)
+                },
+                onShareBackup = { onReady, onError ->
+                    viewModel.shareBackupFile(onReady, onError)
+                },
                 onRepairCOGS = {
                     viewModel.repairCOGS()
                 },
