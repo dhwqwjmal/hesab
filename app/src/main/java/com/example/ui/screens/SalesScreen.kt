@@ -409,6 +409,9 @@ fun SalesScreen(
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(4.dp))
+                                    IconButton(onClick = { onEditCustomerClick(customer) }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "تعديل العميل", tint = MaterialTheme.colorScheme.primary)
+                                    }
                                     IconButton(onClick = { customerToDelete = customer }) {
                                         Icon(Icons.Default.DeleteOutline, contentDescription = "حذف العميل", tint = ErrorRed)
                                     }

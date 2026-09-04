@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.model.Account
+import com.example.data.model.JournalEntry
 import com.example.data.model.JournalEntryLine
 import com.example.ui.theme.*
 import kotlin.math.abs
@@ -28,6 +29,8 @@ import kotlin.math.abs
 fun CreateJournalEntryDialog(
     initialEntryNumber: String = "1",
     postingAccounts: List<Account>,
+    existingEntry: JournalEntry? = null,
+    existingLines: List<JournalEntryLine> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (
         entryNumber: String,
@@ -37,13 +40,19 @@ fun CreateJournalEntryDialog(
         lines: List<JournalEntryLine>
     ) -> Unit
 ) {
-    var entryNumber by remember { mutableStateOf(initialEntryNumber) }
-    var selectedDate by remember { mutableStateOf(System.currentTimeMillis()) }
+    var entryNumber by remember { mutableStateOf(existingEntry?.entryNumber ?: initialEntryNumber) }
+    var selectedDate by remember { mutableStateOf(existingEntry?.date ?: System.currentTimeMillis()) }
     var showDatePicker by remember { mutableStateOf(false) }
-    var description by remember { mutableStateOf("") }
-    var refNumber by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf(existingEntry?.description ?: "") }
+    var refNumber by remember { mutableStateOf(existingEntry?.referenceNumber ?: "") }
 
-    val lines = remember { mutableStateListOf<JournalEntryLine>() }
+    val lines = remember {
+        mutableStateListOf<JournalEntryLine>().apply {
+            if (existingLines.isNotEmpty()) {
+                addAll(existingLines)
+            }
+        }
+    }
 
     // State for adding a line
     var selectedAccount by remember { mutableStateOf<Account?>(postingAccounts.firstOrNull()) }
@@ -98,7 +107,7 @@ fun CreateJournalEntryDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "إنشاء قيد يومية عام",
+                        text = if (existingEntry != null) "تعديل قيد يومية" else "إنشاء قيد يومية عام",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -344,7 +353,7 @@ fun CreateJournalEntryDialog(
                         enabled = isBalanced,
                         modifier = Modifier.testTag("save_journal_entry_btn")
                     ) {
-                        Text("ترحيل وحفظ القيد")
+                        Text(if (existingEntry != null) "حفظ التعديلات" else "ترحيل وحفظ القيد")
                     }
                 }
             }

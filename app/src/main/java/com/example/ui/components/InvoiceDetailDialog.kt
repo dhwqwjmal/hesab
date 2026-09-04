@@ -588,6 +588,7 @@ fun JournalEntryDetailDialog(
     entry: JournalEntry,
     lines: List<JournalEntryLine>,
     onDismiss: () -> Unit,
+    onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -624,6 +625,14 @@ fun JournalEntryDetailDialog(
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (onEdit != null) {
+                            IconButton(onClick = {
+                                onDismiss()
+                                onEdit()
+                            }) {
+                                Icon(imageVector = Icons.Default.Edit, contentDescription = "تعديل القيد", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
                         if (onDelete != null) {
                             IconButton(onClick = { showDeleteConfirm = true }) {
                                 Icon(imageVector = Icons.Default.Delete, contentDescription = "حذف القيد", tint = ErrorRed)

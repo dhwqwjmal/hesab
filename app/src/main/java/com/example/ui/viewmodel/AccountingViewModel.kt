@@ -557,6 +557,33 @@ class AccountingViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun updateJournalEntry(
+        entryId: Long,
+        entryNumber: String,
+        date: Long,
+        description: String,
+        referenceNumber: String,
+        lines: List<JournalEntryLine>,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val result = repository.updateJournalEntry(
+                entryId = entryId,
+                entryNumber = entryNumber,
+                date = date,
+                description = description,
+                referenceNumber = referenceNumber,
+                lines = lines
+            )
+            result.onSuccess {
+                showMessage("تم تعديل القيد اليومي $entryNumber بنجاح")
+                onSuccess()
+            }.onFailure { ex ->
+                showMessage(ex.message ?: "فشل تعديل القيد")
+            }
+        }
+    }
+
     suspend fun getJournalLinesForEntry(entryId: Long): List<JournalEntryLine> {
         return repository.getJournalLines(entryId)
     }

@@ -281,6 +281,78 @@ class AccountingRepository(
         Result.success(Unit)
     }
 
+    suspend fun updateJournalEntry(
+        entryId: Long,
+        entryNumber: String,
+        date: Long,
+        description: String,
+        referenceNumber: String,
+        lines: List<JournalEntryLine>
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val oldEntry = journalDao.getEntryById(entryId)
+            ?: return@withContext Result.failure(IllegalArgumentException("القيد غير موجود"))
+
+        if (oldEntry.source != "MANUAL") {
+            return@withContext Result.failure(
+                IllegalStateException("لا يمكن تعديل هذا القيد مباشرة لأنه قيد آلي تم إنشاؤه من ${oldEntry.source} برقم مرجعي (${oldEntry.referenceNumber}). يرجى تعديل العملية الأصلية.")
+            )
+        }
+
+        val totalDebit = lines.sumOf { it.debit }
+        val totalCredit = lines.sumOf { it.credit }
+
+        if (lines.isEmpty()) {
+            return@withContext Result.failure(IllegalArgumentException("يجب أن يحتوي القيد على سطرين محاسبيين على الأقل"))
+        }
+
+        if (abs(totalDebit - totalCredit) > 0.01) {
+            return@withContext Result.failure(IllegalArgumentException("القيد غير متزن! المدين: $totalDebit / الدائن: $totalCredit"))
+        }
+
+        // Reverse old line effects on account balances
+        val oldLines = journalDao.getLinesForEntry(entryId)
+        for (line in oldLines) {
+            val acc = accountDao.getAccountById(line.accountId)
+            if (acc != null) {
+                val newBalance = if (acc.type.isDebitDefault) {
+                    acc.currentBalance - (line.debit - line.credit)
+                } else {
+                    acc.currentBalance - (line.credit - line.debit)
+                }
+                accountDao.updateBalance(acc.id, newBalance)
+            }
+        }
+        journalDao.deleteLinesForEntry(entryId)
+
+        val updatedEntry = oldEntry.copy(
+            entryNumber = entryNumber,
+            date = date,
+            description = description,
+            referenceNumber = referenceNumber,
+            totalDebit = totalDebit,
+            totalCredit = totalCredit
+        )
+        journalDao.updateEntry(updatedEntry)
+
+        val linkedLines = lines.map { it.copy(entryId = entryId) }
+        journalDao.insertLines(linkedLines)
+
+        // Apply new line effects on account balances
+        for (line in lines) {
+            val acc = accountDao.getAccountById(line.accountId)
+            if (acc != null) {
+                val newBalance = if (acc.type.isDebitDefault) {
+                    acc.currentBalance + (line.debit - line.credit)
+                } else {
+                    acc.currentBalance + (line.credit - line.debit)
+                }
+                accountDao.updateBalance(acc.id, newBalance)
+            }
+        }
+
+        Result.success(Unit)
+    }
+
     // -------------------------------------------------------------
     // Sales Invoices & Automated Journaling
     // -------------------------------------------------------------

@@ -404,6 +404,9 @@ fun PurchasesScreen(
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(4.dp))
+                                    IconButton(onClick = { onEditSupplierClick(supplier) }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "تعديل المورد", tint = MaterialTheme.colorScheme.primary)
+                                    }
                                     IconButton(onClick = { supplierToDelete = supplier }) {
                                         Icon(Icons.Default.DeleteOutline, contentDescription = "حذف المورد", tint = ErrorRed)
                                     }

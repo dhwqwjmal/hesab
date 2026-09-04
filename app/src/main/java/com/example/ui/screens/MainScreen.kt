@@ -85,6 +85,23 @@ fun MainScreen(viewModel: AccountingViewModel = viewModel()) {
     var adjustingProduct by remember { mutableStateOf<Product?>(null) }
     var statementAccount by remember { mutableStateOf<Account?>(null) }
 
+    var editingSalesInvoice by remember { mutableStateOf<SalesInvoice?>(null) }
+    var editingSalesInvoiceItems by remember { mutableStateOf<List<SalesInvoiceItem>>(emptyList()) }
+
+    var editingSalesReturn by remember { mutableStateOf<SalesReturn?>(null) }
+    var editingSalesReturnItems by remember { mutableStateOf<List<SalesReturnItem>>(emptyList()) }
+
+    var editingPurchaseInvoice by remember { mutableStateOf<PurchaseInvoice?>(null) }
+    var editingPurchaseInvoiceItems by remember { mutableStateOf<List<PurchaseInvoiceItem>>(emptyList()) }
+
+    var editingPurchaseReturn by remember { mutableStateOf<PurchaseReturn?>(null) }
+    var editingPurchaseReturnItems by remember { mutableStateOf<List<PurchaseReturnItem>>(emptyList()) }
+
+    var editingVoucher by remember { mutableStateOf<Voucher?>(null) }
+
+    var editingJournalEntry by remember { mutableStateOf<JournalEntry?>(null) }
+    var editingJournalLines by remember { mutableStateOf<List<JournalEntryLine>>(emptyList()) }
+
     var selectedSalesInvoiceForDetail by remember { mutableStateOf<SalesInvoice?>(null) }
     var salesInvoiceDetailItems by remember { mutableStateOf<List<SalesInvoiceItem>>(emptyList()) }
 
@@ -314,6 +331,16 @@ fun MainScreen(viewModel: AccountingViewModel = viewModel()) {
                                         journalDetailLines = viewModel.getJournalLinesForEntry(jv.id)
                                         selectedJournalForDetail = jv
                                     }
+                                },
+                                onEditJournalClick = { entry ->
+                                    if (entry.source != "MANUAL") {
+                                        viewModel.showMessage("لا يمكن تعديل هذا القيد مباشرة لأنه قيد آلي تم إنشاؤه من ${entry.source}. يرجى تعديل العملية الأصلية.")
+                                    } else {
+                                        scope.launch {
+                                            editingJournalLines = viewModel.getJournalLinesForEntry(entry.id)
+                                            editingJournalEntry = entry
+                                        }
+                                    }
                                 }
                             )
                         }
@@ -326,6 +353,9 @@ fun MainScreen(viewModel: AccountingViewModel = viewModel()) {
                                         nextVoucherNo = viewModel.getNextVoucherNumber(type)
                                         showNewVoucherDialog = true
                                     }
+                                },
+                                onEditVoucherClick = { voucher ->
+                                    editingVoucher = voucher
                                 }
                             )
                         }
@@ -346,6 +376,18 @@ fun MainScreen(viewModel: AccountingViewModel = viewModel()) {
                                 },
                                 onNewCustomerClick = { showNewCustomerDialog = true },
                                 onEditCustomerClick = { editingCustomer = it },
+                                onEditInvoiceClick = { inv ->
+                                    scope.launch {
+                                        editingSalesInvoiceItems = viewModel.getSalesInvoiceItems(inv.id)
+                                        editingSalesInvoice = inv
+                                    }
+                                },
+                                onEditReturnClick = { ret ->
+                                    scope.launch {
+                                        editingSalesReturnItems = viewModel.getSalesReturnItems(ret.id)
+                                        editingSalesReturn = ret
+                                    }
+                                },
                                 onViewInvoiceDetail = { sale ->
                                     scope.launch {
                                         salesInvoiceDetailItems = viewModel.getSalesInvoiceItems(sale.id)
@@ -377,6 +419,18 @@ fun MainScreen(viewModel: AccountingViewModel = viewModel()) {
                                 },
                                 onNewSupplierClick = { showNewSupplierDialog = true },
                                 onEditSupplierClick = { editingSupplier = it },
+                                onEditBillClick = { bill ->
+                                    scope.launch {
+                                        editingPurchaseInvoiceItems = viewModel.getPurchaseInvoiceItems(bill.id)
+                                        editingPurchaseInvoice = bill
+                                    }
+                                },
+                                onEditReturnClick = { ret ->
+                                    scope.launch {
+                                        editingPurchaseReturnItems = viewModel.getPurchaseReturnItems(ret.id)
+                                        editingPurchaseReturn = ret
+                                    }
+                                },
                                 onViewBillDetail = { purchase ->
                                     scope.launch {
                                         purchaseInvoiceDetailItems = viewModel.getPurchaseInvoiceItems(purchase.id)
@@ -676,62 +730,314 @@ fun MainScreen(viewModel: AccountingViewModel = viewModel()) {
             )
         }
 
-        // 13. Sales Invoice Detail Dialog (with Delete)
+        // 13. Sales Invoice Detail Dialog (with Edit & Delete)
         if (selectedSalesInvoiceForDetail != null) {
             SalesInvoiceDetailDialog(
                 invoice = selectedSalesInvoiceForDetail!!,
                 items = salesInvoiceDetailItems,
                 onDismiss = { selectedSalesInvoiceForDetail = null },
+                onEdit = {
+                    val inv = selectedSalesInvoiceForDetail
+                    val itms = salesInvoiceDetailItems
+                    selectedSalesInvoiceForDetail = null
+                    if (inv != null) {
+                        editingSalesInvoiceItems = itms
+                        editingSalesInvoice = inv
+                    }
+                },
                 onDelete = {
                     viewModel.deleteSalesInvoice(selectedSalesInvoiceForDetail!!)
                 }
             )
         }
 
-        // 14. Sales Return Detail Dialog (with Delete)
+        // 14. Sales Return Detail Dialog (with Edit & Delete)
         if (selectedSalesReturnForDetail != null) {
             SalesReturnDetailDialog(
                 sReturn = selectedSalesReturnForDetail!!,
                 items = salesReturnDetailItems,
                 onDismiss = { selectedSalesReturnForDetail = null },
+                onEdit = {
+                    val ret = selectedSalesReturnForDetail
+                    val itms = salesReturnDetailItems
+                    selectedSalesReturnForDetail = null
+                    if (ret != null) {
+                        editingSalesReturnItems = itms
+                        editingSalesReturn = ret
+                    }
+                },
                 onDelete = {
                     viewModel.deleteSalesReturn(selectedSalesReturnForDetail!!)
                 }
             )
         }
 
-        // 15. Purchase Invoice Detail Dialog (with Delete)
+        // 15. Purchase Invoice Detail Dialog (with Edit & Delete)
         if (selectedPurchaseInvoiceForDetail != null) {
             PurchaseInvoiceDetailDialog(
                 invoice = selectedPurchaseInvoiceForDetail!!,
                 items = purchaseInvoiceDetailItems,
                 onDismiss = { selectedPurchaseInvoiceForDetail = null },
+                onEdit = {
+                    val bill = selectedPurchaseInvoiceForDetail
+                    val itms = purchaseInvoiceDetailItems
+                    selectedPurchaseInvoiceForDetail = null
+                    if (bill != null) {
+                        editingPurchaseInvoiceItems = itms
+                        editingPurchaseInvoice = bill
+                    }
+                },
                 onDelete = {
                     viewModel.deletePurchaseInvoice(selectedPurchaseInvoiceForDetail!!)
                 }
             )
         }
 
-        // 16. Purchase Return Detail Dialog (with Delete)
+        // 16. Purchase Return Detail Dialog (with Edit & Delete)
         if (selectedPurchaseReturnForDetail != null) {
             PurchaseReturnDetailDialog(
                 pReturn = selectedPurchaseReturnForDetail!!,
                 items = purchaseReturnDetailItems,
                 onDismiss = { selectedPurchaseReturnForDetail = null },
+                onEdit = {
+                    val ret = selectedPurchaseReturnForDetail
+                    val itms = purchaseReturnDetailItems
+                    selectedPurchaseReturnForDetail = null
+                    if (ret != null) {
+                        editingPurchaseReturnItems = itms
+                        editingPurchaseReturn = ret
+                    }
+                },
                 onDelete = {
                     viewModel.deletePurchaseReturn(selectedPurchaseReturnForDetail!!)
                 }
             )
         }
 
-        // 17. Journal Entry Detail Dialog (with Safe Delete)
+        // 17. Journal Entry Detail Dialog (with Edit & Safe Delete)
         if (selectedJournalForDetail != null) {
             JournalEntryDetailDialog(
                 entry = selectedJournalForDetail!!,
                 lines = journalDetailLines,
                 onDismiss = { selectedJournalForDetail = null },
+                onEdit = {
+                    val jv = selectedJournalForDetail
+                    val lns = journalDetailLines
+                    selectedJournalForDetail = null
+                    if (jv != null) {
+                        if (jv.source != "MANUAL") {
+                            viewModel.showMessage("لا يمكن تعديل هذا القيد مباشرة لأنه قيد آلي تم إنشاؤه من ${jv.source}. يرجى تعديل العملية الأصلية.")
+                        } else {
+                            editingJournalLines = lns
+                            editingJournalEntry = jv
+                        }
+                    }
+                },
                 onDelete = {
                     viewModel.deleteJournalEntrySafe(selectedJournalForDetail!!)
+                }
+            )
+        }
+
+        // Dialog for Editing Sales Invoice
+        if (editingSalesInvoice != null) {
+            CreateSalesInvoiceDialog(
+                initialInvoiceNumber = editingSalesInvoice!!.invoiceNumber,
+                isTaxActive = isTaxEnabled,
+                defaultTaxRate = defaultTaxRate,
+                customers = customers,
+                availableProducts = products,
+                existingInvoice = editingSalesInvoice,
+                existingItems = editingSalesInvoiceItems,
+                onDismiss = {
+                    editingSalesInvoice = null
+                    editingSalesInvoiceItems = emptyList()
+                },
+                onConfirm = { invoiceNo, date, cust, custName, items, discount, taxRate, taxOverride, paymentType, notes ->
+                    viewModel.updateSalesInvoice(
+                        invoiceId = editingSalesInvoice!!.id,
+                        invoiceNumber = invoiceNo,
+                        date = date,
+                        customerId = cust?.id,
+                        customerName = custName,
+                        items = items,
+                        discount = discount,
+                        taxRate = taxRate,
+                        taxAmountOverride = taxOverride,
+                        paymentType = paymentType,
+                        notes = notes,
+                        onSuccess = {
+                            editingSalesInvoice = null
+                            editingSalesInvoiceItems = emptyList()
+                        }
+                    )
+                }
+            )
+        }
+
+        // Dialog for Editing Sales Return
+        if (editingSalesReturn != null) {
+            CreateSalesReturnDialog(
+                initialReturnNumber = editingSalesReturn!!.returnNumber,
+                isTaxActive = isTaxEnabled,
+                defaultTaxRate = defaultTaxRate,
+                customers = customers,
+                availableProducts = products,
+                existingReturn = editingSalesReturn,
+                existingItems = editingSalesReturnItems,
+                onDismiss = {
+                    editingSalesReturn = null
+                    editingSalesReturnItems = emptyList()
+                },
+                onConfirm = { returnNo, origInv, date, cust, custName, items, taxRate, taxOverride, paymentType, notes ->
+                    viewModel.updateSalesReturn(
+                        returnId = editingSalesReturn!!.id,
+                        returnNumber = returnNo,
+                        originalInvoiceNumber = origInv,
+                        date = date,
+                        customerId = cust?.id,
+                        customerName = custName,
+                        items = items,
+                        taxRate = taxRate,
+                        taxAmountOverride = taxOverride,
+                        paymentType = paymentType,
+                        notes = notes,
+                        onSuccess = {
+                            editingSalesReturn = null
+                            editingSalesReturnItems = emptyList()
+                        }
+                    )
+                }
+            )
+        }
+
+        // Dialog for Editing Purchase Invoice
+        if (editingPurchaseInvoice != null) {
+            CreatePurchaseInvoiceDialog(
+                initialBillNumber = editingPurchaseInvoice!!.billNumber,
+                isTaxActive = isTaxEnabled,
+                defaultTaxRate = defaultTaxRate,
+                suppliers = suppliers,
+                availableProducts = products,
+                existingInvoice = editingPurchaseInvoice,
+                existingItems = editingPurchaseInvoiceItems,
+                onDismiss = {
+                    editingPurchaseInvoice = null
+                    editingPurchaseInvoiceItems = emptyList()
+                },
+                onConfirm = { billNo, supp, suppName, ref, date, items, discount, taxRate, taxOverride, paymentType, notes ->
+                    viewModel.updatePurchaseInvoice(
+                        billId = editingPurchaseInvoice!!.id,
+                        billNumber = billNo,
+                        supplierInvoiceRef = ref,
+                        date = date,
+                        supplierId = supp?.id,
+                        supplierName = suppName,
+                        items = items,
+                        discount = discount,
+                        taxRate = taxRate,
+                        taxAmountOverride = taxOverride,
+                        paymentType = paymentType,
+                        notes = notes,
+                        onSuccess = {
+                            editingPurchaseInvoice = null
+                            editingPurchaseInvoiceItems = emptyList()
+                        }
+                    )
+                }
+            )
+        }
+
+        // Dialog for Editing Purchase Return
+        if (editingPurchaseReturn != null) {
+            CreatePurchaseReturnDialog(
+                initialReturnNumber = editingPurchaseReturn!!.returnNumber,
+                isTaxActive = isTaxEnabled,
+                defaultTaxRate = defaultTaxRate,
+                suppliers = suppliers,
+                availableProducts = products,
+                existingReturn = editingPurchaseReturn,
+                existingItems = editingPurchaseReturnItems,
+                onDismiss = {
+                    editingPurchaseReturn = null
+                    editingPurchaseReturnItems = emptyList()
+                },
+                onConfirm = { returnNo, origBill, date, supp, suppName, items, taxRate, taxOverride, paymentType, notes ->
+                    viewModel.updatePurchaseReturn(
+                        returnId = editingPurchaseReturn!!.id,
+                        returnNumber = returnNo,
+                        originalBillNumber = origBill,
+                        date = date,
+                        supplierId = supp?.id,
+                        supplierName = suppName,
+                        items = items,
+                        taxRate = taxRate,
+                        taxAmountOverride = taxOverride,
+                        paymentType = paymentType,
+                        notes = notes,
+                        onSuccess = {
+                            editingPurchaseReturn = null
+                            editingPurchaseReturnItems = emptyList()
+                        }
+                    )
+                }
+            )
+        }
+
+        // Dialog for Editing Voucher
+        if (editingVoucher != null) {
+            CreateVoucherDialog(
+                initialType = editingVoucher!!.type,
+                initialNumber = editingVoucher!!.voucherNumber,
+                customers = customers,
+                suppliers = suppliers,
+                accounts = accounts,
+                existingVoucher = editingVoucher,
+                onDismiss = { editingVoucher = null },
+                onConfirm = { voucherNo, vType, date, amount, paymentType, partnerType, partnerId, partnerName, accountId, accountName, notes ->
+                    viewModel.updateVoucher(
+                        voucherId = editingVoucher!!.id,
+                        voucherNumber = voucherNo,
+                        type = vType,
+                        date = date,
+                        amount = amount,
+                        paymentType = paymentType,
+                        partnerType = partnerType,
+                        partnerId = partnerId,
+                        partnerName = partnerName,
+                        accountId = accountId,
+                        accountName = accountName,
+                        notes = notes,
+                        onSuccess = { editingVoucher = null }
+                    )
+                }
+            )
+        }
+
+        // Dialog for Editing Journal Entry
+        if (editingJournalEntry != null) {
+            CreateJournalEntryDialog(
+                initialEntryNumber = editingJournalEntry!!.entryNumber,
+                postingAccounts = postingAccounts,
+                existingEntry = editingJournalEntry,
+                existingLines = editingJournalLines,
+                onDismiss = {
+                    editingJournalEntry = null
+                    editingJournalLines = emptyList()
+                },
+                onConfirm = { entryNo, date, desc, ref, lines ->
+                    viewModel.updateJournalEntry(
+                        entryId = editingJournalEntry!!.id,
+                        entryNumber = entryNo,
+                        date = date,
+                        description = desc,
+                        referenceNumber = ref,
+                        lines = lines,
+                        onSuccess = {
+                            editingJournalEntry = null
+                            editingJournalLines = emptyList()
+                        }
+                    )
                 }
             )
         }

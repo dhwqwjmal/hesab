@@ -33,7 +33,8 @@ fun GeneralLedgerScreen(
     onNewAccountClick: () -> Unit,
     onEditAccountClick: (Account) -> Unit,
     onViewAccountStatement: (Account) -> Unit,
-    onViewJournalDetail: (JournalEntry) -> Unit
+    onViewJournalDetail: (JournalEntry) -> Unit,
+    onEditJournalClick: ((JournalEntry) -> Unit)? = null
 ) {
     var selectedTab by remember { mutableStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
@@ -273,6 +274,11 @@ fun GeneralLedgerScreen(
                                     )
                                 }
                                 Spacer(modifier = Modifier.width(4.dp))
+                                if (onEditJournalClick != null) {
+                                    IconButton(onClick = { onEditJournalClick(entry) }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "تعديل القيد", tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
                                 IconButton(onClick = { journalToDelete = entry }) {
                                     Icon(Icons.Default.DeleteOutline, contentDescription = "حذف القيد", tint = ErrorRed)
                                 }
